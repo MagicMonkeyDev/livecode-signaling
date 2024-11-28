@@ -23,6 +23,7 @@ io.on('connection', (socket) => {
   socket.on('get-streams', () => {
     const streamList = Array.from(streams.values()).map(stream => ({
       streamId: stream.id,
+      id: stream.id,
       username: stream.username,
       title: stream.title,
       description: stream.description,
@@ -60,6 +61,7 @@ io.on('connection', (socket) => {
     io.emit('stream-added', {
       streamId,
       username,
+      id: streamId,
       ...streamInfo,
       viewerCount: 0
     });
