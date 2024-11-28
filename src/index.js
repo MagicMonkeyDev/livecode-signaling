@@ -34,7 +34,7 @@ io.on('connection', (socket) => {
 
   socket.on('start-stream', (streamInfo, callback) => {
     console.log('Stream started:', socket.id);
-    const streamId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const streamId = `stream_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const streamData = {
       ...streamInfo,
       id: streamId,
@@ -45,14 +45,14 @@ io.on('connection', (socket) => {
     streams.set(streamId, streamData);
     
     // Broadcast new stream to all clients
-    socket.broadcast.emit('stream-added', {
+    io.emit('stream-added', {
       streamId,
       ...streamInfo,
       viewerCount: 0
     });
     
     if (callback) {
-      callback({ success: true, streamId: streamId });
+      callback({ success: true, streamId });
     }
   });
 
@@ -95,6 +95,17 @@ io.on('connection', (socket) => {
       candidate,
       from: socket.id
     });
+  });
+
+  socket.on('chat-message', ({ streamId, user, text }) => {
+    const stream = streams.get(streamId);
+    if (stream) {
+      // Broadcast message to streamer and all viewers
+      io.to(stream.streamerId).emit('chat-message', { user, text });
+      stream.viewers.forEach(viewerId => {
+        io.to(viewerId).emit('chat-message', { user, text });
+      });
+    }
   });
 
   socket.on('disconnect', () => {
