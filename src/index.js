@@ -14,16 +14,16 @@ const io = new Server(httpServer, {
   }
 });
 
-const streams = new Map(); // streamId -> streamInfo
+const streams = new Map(); // username -> streamInfo
 const viewers = new Map();
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
   socket.on('get-streams', () => {
-    // Convert streams Map to array of stream info
     const streamList = Array.from(streams.values()).map(stream => ({
-      streamId: stream.streamerId || stream.id,
+      streamId: stream.id,
+      username: stream.username,
       title: stream.title,
       description: stream.description,
       pumpLink: stream.pumpLink,
@@ -34,19 +34,32 @@ io.on('connection', (socket) => {
 
   socket.on('start-stream', (streamInfo, callback) => {
     console.log('Stream started:', socket.id);
-    const streamId = `stream_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const { username } = streamInfo;
+    
+    // Check if user is already streaming
+    const existingStream = streams.get(username);
+    if (existingStream) {
+      if (callback) {
+        callback({ success: false, error: 'User already streaming' });
+      }
+      return;
+    }
+    
+    const streamId = `${username}_${Date.now()}`;
     const streamData = {
       ...streamInfo,
       id: streamId,
       streamerId: socket.id,
+      username,
       viewers: new Set()
     };
     
-    streams.set(streamId, streamData);
+    streams.set(username, streamData);
     
     // Broadcast new stream to all clients
     io.emit('stream-added', {
       streamId,
+      username,
       ...streamInfo,
       viewerCount: 0
     });
@@ -56,11 +69,11 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('join-stream', ({ streamId }) => {
-    const stream = streams.get(streamId);
+  socket.on('join-stream', ({ username }) => {
+    const stream = streams.get(username);
     if (stream) {
-      console.log(`Viewer ${socket.id} joined stream ${streamId}`);
-      viewers.set(socket.id, streamId);
+      console.log(`Viewer ${socket.id} joined stream for ${username}`);
+      viewers.set(socket.id, username);
       stream.viewers.add(socket.id);
       
       // Notify streamer of new viewer
@@ -70,7 +83,7 @@ io.on('connection', (socket) => {
       
       // Update viewer count
       io.emit('viewer-count-update', {
-        streamId,
+        username,
         count: stream.viewers.size
       });
     }
@@ -110,26 +123,27 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     // Handle streamer disconnect
-    const streamerStream = Array.from(streams.values()).find(s => s.streamerId === socket.id);
+    const streamerStream = Array.from(streams.entries()).find(([_, s]) => s.streamerId === socket.id);
     if (streamerStream) {
-      streamerStream.viewers.forEach(viewerId => {
-        io.to(viewerId).emit('stream-ended', streamerStream.id);
+      const [username, stream] = streamerStream;
+      stream.viewers.forEach(viewerId => {
+        io.to(viewerId).emit('stream-ended', stream.id);
       });
-      io.emit('stream-removed', streamerStream.id);
-      streams.delete(streamerStream.id);
+      io.emit('stream-removed', stream.id);
+      streams.delete(username);
     }
     
     // Handle viewer disconnect
     if (viewers.has(socket.id)) {
-      const streamId = viewers.get(socket.id);
-      const stream = streams.get(streamId);
+      const username = viewers.get(socket.id);
+      const stream = streams.get(username);
       if (stream) {
         stream.viewers.delete(socket.id);
         io.to(stream.streamerId).emit('viewer-left', {
           viewerId: socket.id
         });
         io.emit('viewer-count-update', {
-          streamId,
+          username,
           count: stream.viewers.size
         });
       }
