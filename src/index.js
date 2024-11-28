@@ -34,7 +34,7 @@ io.on('connection', (socket) => {
 
   socket.on('start-stream', (streamInfo, callback) => {
     console.log('Stream started:', socket.id);
-    const streamId = `stream_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const streamId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const streamData = {
       ...streamInfo,
       id: streamId,
@@ -45,14 +45,14 @@ io.on('connection', (socket) => {
     streams.set(streamId, streamData);
     
     // Broadcast new stream to all clients
-    io.emit('stream-added', {
+    socket.broadcast.emit('stream-added', {
       streamId,
       ...streamInfo,
       viewerCount: 0
     });
     
     if (callback) {
-      callback({ success: true, streamId });
+      callback({ success: true, streamId: streamId });
     }
   });
 
